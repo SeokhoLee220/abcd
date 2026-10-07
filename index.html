@@ -62,13 +62,16 @@ header p{margin:0;font-size:13px;color:var(--muted)}
 .cell.now.run{border-color:var(--blue);background:color-mix(in srgb,var(--blue) 35%,transparent)}
 
 .clock{
-  margin-top:10px;text-align:center;
+  margin-top:0;text-align:center;
   font-family:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;font-weight:700;
   font-size:clamp(76px,25vw,112px);line-height:1;letter-spacing:0;white-space:nowrap;
 }
 .clock .d{display:inline-block;width:.54em;text-align:center}
 .clock .sep{display:inline-block;width:.28em;text-align:center}
 .clock.paused{opacity:.5}
+.cap{margin-top:10px;text-align:center;font-size:13px;color:var(--muted);min-height:19px}
+.total{margin-top:2px;text-align:center;font-size:14px;color:var(--muted)}
+.total span{font:600 18px "Barlow Condensed",system-ui,sans-serif;color:var(--ink);font-variant-numeric:tabular-nums;margin-left:4px}
 .status{margin-top:6px;text-align:center;font-size:14px;color:var(--muted);min-height:20px}
 .status b{color:var(--ink);font-weight:700}
 
@@ -161,7 +164,9 @@ summary{height:48px;display:flex;align-items:center;font-weight:700;font-size:14
 
   <div class="lanes" id="lanes" aria-label="세트별 진행"></div>
 
-  <div class="clock" id="clock" role="timer" aria-label="경과 시간"></div>
+  <div class="cap" id="cap"></div>
+  <div class="clock" id="clock" role="timer" aria-label="출발 또는 도착 후 시간"></div>
+  <div class="total">전체 <span id="total">00:00.00</span></div>
   <div class="status" id="status"></div>
 
   <button class="primary" id="primary"><span id="pLabel">시작</span><small id="pSub"></small></button>
@@ -210,7 +215,7 @@ summary{height:48px;display:flex;align-items:center;font-weight:700;font-size:14
   var $ = function(id){ return document.getElementById(id); };
 
   function fresh(){
-    return { status:'idle', startAbs:null, accMs:0, resumeAt:null, marks:[], pendingStart:null,
+    return { status:'idle', startAbs:null, accMs:0, resumeAt:null, marks:[], pendingStart:null, lastTagEl:0,
              target:null, sets:3, reps:10, memo:'', nextId:1 };
   }
   function load(){
@@ -223,6 +228,7 @@ summary{height:48px;display:flex;align-items:center;font-weight:700;font-size:14
         st.marks.forEach(function(m){
           if(m.startEl===undefined){ m.startEl = m.el-(m.lap||0); m.startAbs = m.abs-(m.lap||0); }
         });
+        if(o.lastTagEl===undefined){ st.lastTagEl = st.pendingStart ? st.pendingStart.el : (st.marks.length ? st.marks[st.marks.length-1].el : 0); }
         return st;
       }
     }catch(e){}
@@ -269,13 +275,16 @@ summary{height:48px;display:flex;align-items:center;font-weight:700;font-size:14
     clock.innerHTML = h;
     digs = Array.prototype.slice.call(clock.querySelectorAll('.d'));
   })();
-  var lastStr = '';
+  var lastStr = '', lastTot = '';
   function updateClock(){
-    var s = parts(elapsed());
+    var e = elapsed();
+    var s = parts(Math.max(0, e - S.lastTagEl));
     if(s!==lastStr){
       for(var i=0;i<6;i++) digs[i].textContent = s.charAt(i);
       lastStr = s;
     }
+    var t = fmt(e);
+    if(t!==lastTot){ $('total').textContent = t; lastTot = t; }
   }
   var raf = 0;
   function loop(){
@@ -315,7 +324,7 @@ summary{height:48px;display:flex;align-items:center;font-weight:700;font-size:14
     var st = primaryState(), now = Date.now();
     if(st.disabled) return;
     if(st.kind==='start'){
-      S.status='running'; S.startAbs=now; S.accMs=0; S.resumeAt=now; S.pendingStart=null;
+      S.status='running'; S.startAbs=now; S.accMs=0; S.resumeAt=now; S.pendingStart=null; S.lastTagEl=0;
       wake(true); startLoop();
     }else if(st.kind==='resume'){
       S.status='running'; S.resumeAt=now; wake(true); startLoop();
@@ -323,6 +332,7 @@ summary{height:48px;display:flex;align-items:center;font-weight:700;font-size:14
       if(now - lastMarkAt < 300) return;
       lastMarkAt = now;
       S.pendingStart = {el:elapsed(now), abs:now};
+      S.lastTagEl = S.pendingStart.el;
       try{ if(navigator.vibrate) navigator.vibrate(30); }catch(e){}
     }else if(st.kind==='arrive'){
       if(now - lastMarkAt < 300) return;
@@ -332,6 +342,7 @@ summary{height:48px;display:flex;align-items:center;font-weight:700;font-size:14
                      startEl:ps.el, startAbs:ps.abs, el:el, abs:now, lap:el-ps.el,
                      hr:null, hrEl:null, hrAbs:null });
       S.pendingStart = null;
+      S.lastTagEl = el;
       S.target = S.marks[S.marks.length-1].id;
       try{ if(navigator.vibrate) navigator.vibrate([30,40,30]); }catch(e){}
     }
@@ -347,9 +358,10 @@ summary{height:48px;display:flex;align-items:center;font-weight:700;font-size:14
     return null;
   }
   function undo(){
-    if(S.pendingStart){ S.pendingStart = null; save(); render(); return; }
+    if(S.pendingStart){ S.pendingStart = null; S.lastTagEl = S.marks.length ? S.marks[S.marks.length-1].el : 0; save(); render(); return; }
     if(!S.marks.length) return;
     var m = S.marks.pop();
+    S.lastTagEl = S.marks.length ? S.marks[S.marks.length-1].el : 0;
     if(S.target===m.id) S.target = latestPending();
     save(); render();
   }
@@ -462,6 +474,7 @@ summary{height:48px;display:flex;align-items:center;font-weight:700;font-size:14
     if(n>0) st += ' · 직전 왕복 <b>'+sec2(S.marks[n-1].lap)+'초</b>';
     $('status').innerHTML = st;
     clock.classList.toggle('paused', S.status==='paused');
+    $('cap').textContent = S.status==='idle' ? '' : (S.pendingStart ? '출발 후 시간' : (n>0 ? '도착 후 시간' : '시작 후 시간'));
 
     // primary
     var ps = primaryState(), pb = $('primary');
@@ -556,7 +569,7 @@ summary{height:48px;display:flex;align-items:center;font-weight:700;font-size:14
     var keep = {sets:S.sets, reps:S.reps, memo:S.memo};
     cancelAnimationFrame(raf); wake(false);
     S = Object.assign(fresh(), keep);
-    shownTarget = null; lastStr = '';
+    shownTarget = null; lastStr = ''; lastTot = '';
     $('fallback').hidden = true;
     save(); render();
     toast('초기화했어요');
