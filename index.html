@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>왕복 달리기 스톱워치</title>
+<meta name="description" content="15m 왕복 달리기 출발·도착 기록, 심박수 입력, CSV 저장">
+<meta name="theme-color" content="#E8EDF0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E8EDF0; --surface:#FFFFFF; --ink:#0E2233; --muted:#5A6D7B; --line:#C5D1D8;
+  --tape:#FFD60A; --tape-ink:#1A1500; --blue:#1F5FD6; --heart:#D93A4A; --heart-ink:#FFFFFF;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0B1620; --surface:#14232F; --ink:#E8EEF2; --muted:#8CA0AE; --line:#294052;
+    --tape:#FFD60A; --tape-ink:#1A1500; --blue:#6EA0FF; --heart:#FF6B78; --heart-ink:#1B0508;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0B1620; --surface:#14232F; --ink:#E8EEF2; --muted:#8CA0AE; --line:#294052;
+  --tape:#FFD60A; --tape-ink:#1A1500; --blue:#6EA0FF; --heart:#FF6B78; --heart-ink:#1B0508;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px);background:var(--bg)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font:500 16px/1.4 "Noto Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  touch-action:manipulation;
+}
+button{font:inherit;color:inherit;touch-action:manipulation}
+:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+.app{max-width:480px;margin:0 auto;padding:12px 16px 48px}
+
+header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+header h1{margin:0;font-size:15px;font-weight:700}
+header p{margin:0;font-size:13px;color:var(--muted)}
+.btn{
+  height:44px;padding:0 16px;border-radius:12px;border:1px solid var(--line);
+  background:var(--surface);font-weight:700;font-size:14px;cursor:pointer;
+}
+.btn:disabled{opacity:.4;cursor:default}
+.btn:active:not(:disabled){transform:scale(.97)}
+
+.lanes{margin-top:14px}
+.lane{display:grid;grid-template-columns:40px 1fr;align-items:center;gap:8px;margin:6px 0}
+.lane .lbl{font-size:12px;color:var(--muted)}
+.cells{display:grid;gap:4px}
+.cell{height:16px;border-radius:4px;border:1.5px solid var(--line);background:transparent;position:relative}
+.cell.done{background:var(--blue);border-color:var(--blue)}
+.cell.hr::after{content:"";position:absolute;left:50%;top:50%;width:5px;height:5px;margin:-2.5px 0 0 -2.5px;border-radius:50%;background:var(--heart-ink);}
+.cell.hr{box-shadow:inset 0 -4px 0 var(--heart)}
+.cell.hr::after{display:none}
+.cell.now{border-color:var(--ink);border-width:2px}
+.cell.now.run{border-color:var(--blue);background:color-mix(in srgb,var(--blue) 35%,transparent)}
+
+.clock{
+  margin-top:10px;text-align:center;
+  font-family:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;font-weight:700;
+  font-size:clamp(76px,25vw,112px);line-height:1;letter-spacing:0;white-space:nowrap;
+}
+.clock .d{display:inline-block;width:.54em;text-align:center}
+.clock .sep{display:inline-block;width:.28em;text-align:center}
+.clock.paused{opacity:.5}
+.status{margin-top:6px;text-align:center;font-size:14px;color:var(--muted);min-height:20px}
+.status b{color:var(--ink);font-weight:700}
+
+.primary{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  width:100%;height:120px;margin-top:14px;border:0;border-radius:22px;cursor:pointer;
+  font-weight:800;font-size:32px;letter-spacing:.01em;
+  background:var(--ink);color:var(--bg);
+}
+.primary small{font-size:14px;font-weight:500;opacity:.8}
+.primary.mark{background:var(--tape);color:var(--tape-ink)}
+.primary.depart{background:var(--blue);color:var(--bg)}
+.primary:active:not(:disabled){transform:scale(.985)}
+.primary:disabled{opacity:.35;cursor:default}
+
+.sub{display:flex;gap:10px;margin-top:10px}
+.sub .btn{flex:1;height:48px}
+
+.hrpanel{
+  margin-top:14px;padding:12px;border-radius:16px;background:var(--surface);
+  border:1px solid var(--line);border-left:5px solid var(--heart);
+}
+.hrpanel .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.hrpanel .ttl{font-weight:700;font-size:15px}
+.hrpanel .hint{font-size:12px;color:var(--muted);margin:4px 0 8px}
+.linkbtn{background:none;border:0;color:var(--muted);font-size:13px;padding:6px 4px;cursor:pointer;text-decoration:underline}
+.hrrow{display:flex;gap:8px}
+.hrrow input{
+  flex:1;min-width:0;height:52px;border-radius:12px;border:1.5px solid var(--line);
+  background:var(--bg);color:var(--ink);padding:0 14px;
+  font:700 26px "Barlow Condensed",system-ui,sans-serif;
+}
+.hrrow .ok{height:52px;padding:0 22px;border-radius:12px;border:0;background:var(--heart);color:var(--heart-ink);font-weight:800;font-size:16px;cursor:pointer}
+.hrrow .ok:active{transform:scale(.97)}
+
+.log{list-style:none;margin:16px 0 0;padding:0}
+.empty{margin:20px 4px;color:var(--muted);font-size:14px;text-align:center}
+.row{
+  display:grid;grid-template-columns:48px 1fr;gap:10px;align-items:start;
+  background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin:8px 0;
+}
+.idx{text-align:center;line-height:1}
+.idx b{display:block;font:700 30px "Barlow Condensed",system-ui,sans-serif}
+.idx span{display:block;margin-top:2px;font-size:11px;color:var(--muted)}
+.ln{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;min-height:24px}
+.ln + .ln{margin-top:4px;padding-top:4px;border-top:1px dashed var(--line)}
+.ln .k{width:2em;font-size:12px;color:var(--muted)}
+.ln .v{font-variant-numeric:tabular-nums;font-weight:700;font-size:15px}
+.ln .a{font-variant-numeric:tabular-nums;font-size:12px;color:var(--muted)}
+.ln .lap{font-size:12px;color:var(--blue);font-weight:700}
+.ln.hrl .v.hv{color:var(--heart);font-size:18px}
+.ln .edit{margin-left:auto;height:30px;padding:0 12px;border-radius:9px;border:1px solid var(--heart);background:transparent;color:var(--heart);font-weight:700;font-size:13px;cursor:pointer}
+
+details{margin-top:18px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:0 14px}
+summary{height:48px;display:flex;align-items:center;font-weight:700;font-size:14px;cursor:pointer}
+.set{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0 12px}
+.set label{font-size:14px}
+.set input{width:96px;height:44px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);font:700 18px "Noto Sans KR",sans-serif;text-align:center}
+.set input.wide{width:60%;text-align:left;padding:0 12px;font-weight:500;font-size:15px}
+.set input:disabled{opacity:.5}
+.note{font-size:12px;color:var(--muted);margin:0 0 12px}
+
+.fallback{margin-top:14px}
+.fallback p{font-size:13px;color:var(--muted);margin:0 0 8px}
+.fallback textarea{width:100%;height:160px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);padding:10px;font:12px/1.4 ui-monospace,Menlo,monospace}
+
+.danger{margin-top:20px;text-align:center}
+.danger .btn{width:100%;color:var(--muted)}
+.danger .btn.armed{background:var(--heart);color:var(--heart-ink);border-color:var(--heart)}
+
+.toast{
+  position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);
+  max-width:calc(100% - 32px);padding:10px 16px;border-radius:12px;background:var(--ink);color:var(--bg);
+  font-size:14px;font-weight:700;text-align:center;z-index:10
+}
+@media (prefers-reduced-motion: no-preference){
+  .primary,.btn,.ok{transition:transform .08s ease}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <h1>15m 왕복 달리기</h1>
+      <p id="spec"></p>
+    </div>
+    <button class="btn" id="csvBtn" disabled>CSV 저장</button>
+  </header>
+
+  <div class="lanes" id="lanes" aria-label="세트별 진행"></div>
+
+  <div class="clock" id="clock" role="timer" aria-label="경과 시간"></div>
+  <div class="status" id="status"></div>
+
+  <button class="primary" id="primary"><span id="pLabel">시작</span><small id="pSub"></small></button>
+
+  <div class="sub">
+    <button class="btn" id="pauseBtn" hidden>일시정지</button>
+    <button class="btn" id="undoBtn" hidden>마지막 마킹 취소</button>
+  </div>
+
+  <section class="hrpanel" id="hrPanel" hidden>
+    <div class="top">
+      <span class="ttl" id="hrTitle"></span>
+      <button class="linkbtn" id="hrClose">닫기</button>
+    </div>
+    <p class="hint" id="hrHint">입력 버튼을 누른 시각이 심박수 입력 시각으로 기록돼요.</p>
+    <div class="hrrow">
+      <input id="hrInput" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="bpm" enterkeyhint="done" aria-label="심박수">
+      <button class="ok" id="hrOk">입력</button>
+    </div>
+  </section>
+
+  <ul class="log" id="log"></ul>
+  <p class="empty" id="empty">시작을 누른 뒤, 왕복마다 출발과 도착을 차례로 누르세요.</p>
+
+  <div class="fallback" id="fallback" hidden>
+    <p>파일 저장이 되지 않았어요. 아래 내용을 복사해 메모장이나 스프레드시트에 붙여넣으세요.</p>
+    <textarea id="fbText" readonly></textarea>
+    <button class="btn" id="fbCopy" style="margin-top:8px;width:100%">전체 복사</button>
+  </div>
+
+  <details id="settings">
+    <summary>설정</summary>
+    <div class="set"><label for="setsIn">세트 수</label><input id="setsIn" type="number" inputmode="numeric" min="1" max="10"></div>
+    <div class="set"><label for="repsIn">세트당 왕복 횟수</label><input id="repsIn" type="number" inputmode="numeric" min="1" max="30"></div>
+    <div class="set"><label for="memoIn">이름·메모</label><input class="wide" id="memoIn" type="text" maxlength="40" placeholder="CSV에 함께 기록"></div>
+    <p class="note">세트 수와 횟수는 시작 전에만 바꿀 수 있어요.</p>
+  </details>
+
+  <div class="danger"><button class="btn" id="resetBtn">기록 초기화</button></div>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+(function(){
+  var KEY = 'shuttle-stopwatch-v1';
+  var $ = function(id){ return document.getElementById(id); };
+
+  function fresh(){
+    return { status:'idle', startAbs:null, accMs:0, resumeAt:null, marks:[], pendingStart:null,
+             target:null, sets:3, reps:10, memo:'', nextId:1 };
+  }
+  function load(){
+    try{
+      var r = localStorage.getItem(KEY);
+      if(!r) return null;
+      var o = JSON.parse(r);
+      if(o && Array.isArray(o.marks)){
+        var st = Object.assign(fresh(), o);
+        st.marks.forEach(function(m){
+          if(m.startEl===undefined){ m.startEl = m.el-(m.lap||0); m.startAbs = m.abs-(m.lap||0); }
+        });
+        return st;
+      }
+    }catch(e){}
+    return null;
+  }
+  var S = load() || fresh();
+  function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
+
+  /* ---------- formatting ---------- */
+  function p2(n){ return (n<10?'0':'')+n; }
+  function p3(n){ return n<10?'00'+n:(n<100?'0'+n:''+n); }
+  function parts(ms){
+    var c = Math.floor(ms/10);
+    var cs = c%100, s = Math.floor(c/100)%60, m = Math.min(Math.floor(c/6000),99);
+    return p2(m)+p2(s)+p2(cs);
+  }
+  function fmt(ms){ var t = parts(ms); return t.slice(0,2)+':'+t.slice(2,4)+'.'+t.slice(4,6); }
+  function sec2(ms){ return (ms/1000).toFixed(2); }
+  function sec3(ms){ return (ms/1000).toFixed(3); }
+  function hms(ts){
+    var d = new Date(ts);
+    return p2(d.getHours())+':'+p2(d.getMinutes())+':'+p2(d.getSeconds())+'.'+p3(d.getMilliseconds());
+  }
+  function csvAbs(ts){
+    var d = new Date(ts), off = -d.getTimezoneOffset(), a = Math.abs(off);
+    return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate())+' '+hms(ts)+' '+(off>=0?'+':'-')+p2(Math.floor(a/60))+':'+p2(a%60);
+  }
+
+  /* ---------- timing ---------- */
+  function elapsed(now){
+    now = now || Date.now();
+    return S.status==='running' ? S.accMs + (now - S.resumeAt) : S.accMs;
+  }
+  function total(){ return S.sets * S.reps; }
+  /* ---------- clock ---------- */
+  var clock = $('clock'), digs = [];
+  (function buildClock(){
+    var h = '';
+    for(var i=0;i<6;i++){
+      h += '<span class="d">0</span>';
+      if(i===1) h += '<span class="sep">:</span>';
+      if(i===3) h += '<span class="sep">.</span>';
+    }
+    clock.innerHTML = h;
+    digs = Array.prototype.slice.call(clock.querySelectorAll('.d'));
+  })();
+  var lastStr = '';
+  function updateClock(){
+    var s = parts(elapsed());
+    if(s!==lastStr){
+      for(var i=0;i<6;i++) digs[i].textContent = s.charAt(i);
+      lastStr = s;
+    }
+  }
+  var raf = 0;
+  function loop(){
+    updateClock();
+    if(S.status==='running') raf = requestAnimationFrame(loop);
+  }
+  function startLoop(){ cancelAnimationFrame(raf); loop(); }
+
+  /* ---------- wake lock ---------- */
+  var wl = null;
+  function wake(on){
+    try{
+      if(on && navigator.wakeLock){
+        navigator.wakeLock.request('screen').then(function(l){ wl = l; }).catch(function(){});
+      }else if(!on && wl){ wl.release(); wl = null; }
+    }catch(e){}
+  }
+  document.addEventListener('visibilitychange', function(){
+    if(document.visibilityState==='visible'){
+      updateClock();
+      if(S.status==='running') wake(true);
+    }
+  });
+
+  /* ---------- actions ---------- */
+  var lastMarkAt = 0;
+  function primaryState(){
+    var n = S.marks.length, T = total();
+    var cur = '세트 '+(Math.floor(n/S.reps)+1)+' · '+(n%S.reps+1)+'회째';
+    if(S.status==='idle') return {label:'시작', sub:'탭하면 스톱워치가 시작돼요', cls:'', kind:'start'};
+    if(S.status==='paused') return {label:'계속', sub:'일시정지 중', cls:'', kind:'resume'};
+    if(S.pendingStart) return {label:'도착', sub:cur+' 달리는 중', cls:'mark', kind:'arrive'};
+    if(n>=T) return {label:'측정 완료', sub:'총 '+T+'회', cls:'', kind:'done', disabled:true};
+    return {label:'출발', sub:cur, cls:'depart', kind:'depart'};
+  }
+  function primary(){
+    var st = primaryState(), now = Date.now();
+    if(st.disabled) return;
+    if(st.kind==='start'){
+      S.status='running'; S.startAbs=now; S.accMs=0; S.resumeAt=now; S.pendingStart=null;
+      wake(true); startLoop();
+    }else if(st.kind==='resume'){
+      S.status='running'; S.resumeAt=now; wake(true); startLoop();
+    }else if(st.kind==='depart'){
+      if(now - lastMarkAt < 300) return;
+      lastMarkAt = now;
+      S.pendingStart = {el:elapsed(now), abs:now};
+      try{ if(navigator.vibrate) navigator.vibrate(30); }catch(e){}
+    }else if(st.kind==='arrive'){
+      if(now - lastMarkAt < 300) return;
+      lastMarkAt = now;
+      var n = S.marks.length, ps = S.pendingStart, el = elapsed(now);
+      S.marks.push({ id:S.nextId++, set:Math.floor(n/S.reps)+1, rep:n%S.reps+1,
+                     startEl:ps.el, startAbs:ps.abs, el:el, abs:now, lap:el-ps.el,
+                     hr:null, hrEl:null, hrAbs:null });
+      S.pendingStart = null;
+      S.target = S.marks[S.marks.length-1].id;
+      try{ if(navigator.vibrate) navigator.vibrate([30,40,30]); }catch(e){}
+    }
+    save(); render();
+  }
+  function pause(){
+    if(S.status!=='running') return;
+    S.accMs = elapsed(); S.status='paused'; S.resumeAt=null;
+    wake(false); cancelAnimationFrame(raf); updateClock(); save(); render();
+  }
+  function latestPending(){
+    for(var i=S.marks.length-1;i>=0;i--) if(S.marks[i].hr===null) return S.marks[i].id;
+    return null;
+  }
+  function undo(){
+    if(S.pendingStart){ S.pendingStart = null; save(); render(); return; }
+    if(!S.marks.length) return;
+    var m = S.marks.pop();
+    if(S.target===m.id) S.target = latestPending();
+    save(); render();
+  }
+  function submitHr(){
+    var m = S.marks.filter(function(x){ return x.id===S.target; })[0];
+    if(!m) return;
+    var v = $('hrInput').value.trim();
+    var num = parseInt(v,10);
+    if(!/^\d{2,3}$/.test(v) || num<30 || num>250){ toast('심박수는 30~250 사이 숫자로 입력하세요'); return; }
+    var now = Date.now();
+    if(m.hr===null){ m.hr = num; m.hrEl = elapsed(now); m.hrAbs = now; }
+    else{ m.hr = num; }
+    S.target = latestPending();
+    $('hrInput').value = ''; shownTarget = null;
+    $('hrInput').blur();
+    save(); render();
+  }
+
+  /* ---------- CSV ---------- */
+  function esc(v){
+    var s = String(v);
+    return /[",\r\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  }
+  function buildCsv(){
+    var head = ['세션시작_절대시각','이름메모','세트','회','출발_경과초','출발_절대시각','도착_경과초','도착_절대시각',
+                '왕복시간_초','심박수_bpm','심박입력_경과초','심박입력_절대시각','도착후_입력지연초'];
+    var lines = [head.map(esc).join(',')];
+    S.marks.forEach(function(m){
+      lines.push([
+        csvAbs(S.startAbs), S.memo, m.set, m.rep,
+        sec3(m.startEl), csvAbs(m.startAbs), sec3(m.el), csvAbs(m.abs), sec3(m.lap),
+        m.hr===null ? '' : m.hr,
+        m.hrEl===null ? '' : sec3(m.hrEl),
+        m.hrAbs===null ? '' : csvAbs(m.hrAbs),
+        m.hrAbs===null ? '' : sec3(m.hrAbs - m.abs)
+      ].map(esc).join(','));
+    });
+    return lines.join('\r\n') + '\r\n';
+  }
+  function fileName(){
+    var d = new Date(S.startAbs||Date.now());
+    return 'shuttle_'+d.getFullYear()+p2(d.getMonth()+1)+p2(d.getDate())+'_'+p2(d.getHours())+p2(d.getMinutes())+p2(d.getSeconds())+'.csv';
+  }
+  function exportCsv(){
+    if(!S.marks.length) return;
+    var csv = buildCsv();
+    try{
+      var blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8'});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = fileName();
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+      toast('CSV 저장을 시작했어요');
+    }catch(e){
+      showFallback(csv);
+    }
+  }
+  function showFallback(csv){
+    $('fbText').value = csv;
+    $('fallback').hidden = false;
+    $('fallback').scrollIntoView({block:'center'});
+  }
+  $('fbCopy').addEventListener('click', function(){
+    var ta = $('fbText');
+    ta.select();
+    var done = false;
+    try{ done = document.execCommand('copy'); }catch(e){}
+    if(!done && navigator.clipboard){
+      navigator.clipboard.writeText(ta.value).then(function(){ toast('복사했어요'); }).catch(function(){ toast('길게 눌러 직접 복사하세요'); });
+    }else{
+      toast(done ? '복사했어요' : '길게 눌러 직접 복사하세요');
+    }
+  });
+
+  /* ---------- toast ---------- */
+  var toastT = 0;
+  function toast(t){
+    var el = $('toast'); el.textContent = t; el.hidden = false;
+    clearTimeout(toastT); toastT = setTimeout(function(){ el.hidden = true; }, 2800);
+  }
+
+  /* ---------- render ---------- */
+  var shownTarget = null;
+  function render(){
+    var n = S.marks.length, T = total(), reps = S.reps;
+    $('spec').textContent = reps+'회 × '+S.sets+'세트';
+
+    // lanes
+    var h = '';
+    for(var s=0;s<S.sets;s++){
+      h += '<div class="lane"><span class="lbl">세트 '+(s+1)+'</span><div class="cells" style="grid-template-columns:repeat('+reps+',1fr)">';
+      for(var r=0;r<reps;r++){
+        var i = s*reps+r, m = S.marks[i], c = 'cell';
+        if(m){ c += ' done'; if(m.hr!==null) c += ' hr'; }
+        else if(i===n && S.status!=='idle') c += S.pendingStart ? ' now run' : ' now';
+        h += '<span class="'+c+'"></span>';
+      }
+      h += '</div></div>';
+    }
+    $('lanes').innerHTML = h;
+
+    // status line
+    var st;
+    if(S.pendingStart) st = '<b>세트 '+(Math.floor(n/reps)+1)+'</b> · '+(n%reps+1)+'회째 달리는 중';
+    else if(n===0) st = S.status==='idle' ? '준비 · '+S.sets+'세트 × '+reps+'회' : '<b>세트 1</b> · 0/'+reps+'회 완료';
+    else if(n>=T) st = '<b>측정 완료</b> · 총 '+T+'회';
+    else if(n%reps===0) st = '<b>세트 '+(n/reps)+' 끝</b> · 휴식 중';
+    else st = '<b>세트 '+(Math.floor(n/reps)+1)+'</b> · '+(n%reps)+'/'+reps+'회 완료';
+    if(n>0) st += ' · 직전 왕복 <b>'+sec2(S.marks[n-1].lap)+'초</b>';
+    $('status').innerHTML = st;
+    clock.classList.toggle('paused', S.status==='paused');
+
+    // primary
+    var ps = primaryState(), pb = $('primary');
+    pb.className = 'primary'+(ps.cls?' '+ps.cls:'');
+    pb.disabled = !!ps.disabled;
+    $('pLabel').textContent = ps.label;
+    $('pSub').textContent = ps.sub;
+
+    $('pauseBtn').hidden = S.status!=='running';
+    $('undoBtn').hidden = n===0 && !S.pendingStart;
+    $('undoBtn').textContent = S.pendingStart ? '출발 취소' : '마지막 마킹 취소';
+    $('csvBtn').disabled = n===0;
+
+    // HR panel
+    var tm = S.marks.filter(function(x){ return x.id===S.target; })[0];
+    $('hrPanel').hidden = !tm;
+    if(tm){
+      $('hrTitle').textContent = '세트 '+tm.set+' · '+tm.rep+'회 심박수';
+      $('hrHint').textContent = tm.hr===null ? '입력 버튼을 누른 시각이 심박수 입력 시각으로 기록돼요.' : '수정해도 최초 입력 시각은 그대로 유지돼요.';
+      if(shownTarget!==tm.id){ $('hrInput').value = tm.hr===null ? '' : tm.hr; shownTarget = tm.id; }
+    }else{ shownTarget = null; }
+
+    // log
+    var lh = '';
+    if(S.pendingStart){
+      lh += '<li class="row"><div class="idx"><b>'+(n%reps+1)+'</b><span>세트 '+(Math.floor(n/reps)+1)+'</span></div><div>'
+        + '<div class="ln"><span class="k">출발</span><span class="v">'+fmt(S.pendingStart.el)+'</span><span class="a">'+hms(S.pendingStart.abs)+'</span></div>'
+        + '<div class="ln"><span class="k">도착</span><span class="a">달리는 중</span></div></div></li>';
+    }
+    for(var k=n-1;k>=0;k--){
+      var mk = S.marks[k];
+      lh += '<li class="row"><div class="idx"><b>'+mk.rep+'</b><span>세트 '+mk.set+'</span></div><div>'
+        + '<div class="ln"><span class="k">출발</span><span class="v">'+fmt(mk.startEl)+'</span><span class="a">'+hms(mk.startAbs)+'</span></div>'
+        + '<div class="ln"><span class="k">도착</span><span class="v">'+fmt(mk.el)+'</span><span class="a">'+hms(mk.abs)+'</span><span class="lap">왕복 '+sec2(mk.lap)+'초</span></div>'
+        + '<div class="ln hrl"><span class="k">심박</span>';
+      if(mk.hr!==null){
+        lh += '<span class="v hv">'+mk.hr+'</span><span class="v">'+fmt(mk.hrEl)+'</span><span class="a">'+hms(mk.hrAbs)+'</span>'
+          + '<button class="edit" data-id="'+mk.id+'">수정</button>';
+      }else{
+        lh += '<span class="a">아직 입력 안 함</span><button class="edit" data-id="'+mk.id+'">입력</button>';
+      }
+      lh += '</div></div></li>';
+    }
+    $('log').innerHTML = lh;
+    $('empty').hidden = n>0 || !!S.pendingStart;
+
+    // settings
+    var locked = !(S.status==='idle' && n===0);
+    $('setsIn').disabled = locked; $('repsIn').disabled = locked;
+    if(document.activeElement!==$('setsIn')) $('setsIn').value = S.sets;
+    if(document.activeElement!==$('repsIn')) $('repsIn').value = S.reps;
+    if(document.activeElement!==$('memoIn')) $('memoIn').value = S.memo;
+    updateClock();
+  }
+
+  /* ---------- events ---------- */
+  var pb = $('primary');
+  pb.addEventListener('pointerdown', function(e){
+    if(e.pointerType==='mouse' && e.button!==0) return;
+    primary();
+  });
+  pb.addEventListener('click', function(e){ if(e.detail===0) primary(); });
+
+  $('pauseBtn').addEventListener('click', pause);
+  $('undoBtn').addEventListener('click', undo);
+  $('csvBtn').addEventListener('click', exportCsv);
+  $('hrOk').addEventListener('click', submitHr);
+  $('hrInput').addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); submitHr(); } });
+  $('hrInput').addEventListener('input', function(){ this.value = this.value.replace(/\D/g,'').slice(0,3); });
+  $('hrClose').addEventListener('click', function(){ S.target = null; shownTarget = null; save(); render(); });
+  $('log').addEventListener('click', function(e){
+    var b = e.target.closest('button[data-id]');
+    if(!b) return;
+    S.target = parseInt(b.getAttribute('data-id'),10);
+    shownTarget = null; save(); render();
+    $('hrPanel').scrollIntoView({block:'center'});
+    $('hrInput').focus();
+  });
+
+  function clampInt(v, lo, hi, d){ v = parseInt(v,10); if(isNaN(v)) return d; return Math.max(lo, Math.min(hi, v)); }
+  $('setsIn').addEventListener('change', function(){ S.sets = clampInt(this.value,1,10,S.sets); save(); render(); });
+  $('repsIn').addEventListener('change', function(){ S.reps = clampInt(this.value,1,30,S.reps); save(); render(); });
+  $('memoIn').addEventListener('input', function(){ S.memo = this.value; save(); });
+
+  var armed = false, armT = 0, rb = $('resetBtn');
+  rb.addEventListener('click', function(){
+    if(!armed){
+      armed = true; rb.classList.add('armed'); rb.textContent = '한 번 더 누르면 모든 기록이 삭제돼요';
+      armT = setTimeout(disarm, 3500); return;
+    }
+    clearTimeout(armT); disarm();
+    var keep = {sets:S.sets, reps:S.reps, memo:S.memo};
+    cancelAnimationFrame(raf); wake(false);
+    S = Object.assign(fresh(), keep);
+    shownTarget = null; lastStr = '';
+    $('fallback').hidden = true;
+    save(); render();
+    toast('초기화했어요');
+  });
+  function disarm(){ armed = false; rb.classList.remove('armed'); rb.textContent = '기록 초기화'; }
+
+  /* ---------- init ---------- */
+  render();
+  if(S.status==='running'){ startLoop(); wake(true); }
+})();
+</script>
+</body>
+</html>
